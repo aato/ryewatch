@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<!--[if IE 8]> <html class="no-js lt-ie9" lang="en"> <![endif]-->
+<!--[if gt IE 8]><!--><html class="no-js" lang="en"> <!--<![endif]-->
+<head>
+  <script src="js/jquery-2.0.3.min.js"></script>
+  <script src="js/vendor/custom.modernizr.js"></script>
+  <script type="text/javascript" src="js/responsive-tables.js"></script>
+  <script src="js/moment.min.js"></script>
+  <script type="text/javascript"  
+  src="//maps.google.com/maps/api/js?libraries=visualization&sensor=false">
+  </script>
+  <!-- <script
+      src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js">
+    </script>
+  -->
+
+  <meta charset="utf-8" />
+  <!-- Set the viewport width to device width for mobile -->
+  <meta name="viewport" content="width=device-width" />
+  <title>RyeWatch - Ryerson Security Incident Mapping</title>
+
+  <style>
+  #map-canvas { width:100%; height:500px; }
+  #map-canvas img { max-width: none; height: auto }
+  </style>
+
+  <link type="text/css" media="screen" rel="stylesheet" href="css/responsive-tables.css" />
+  <link rel="stylesheet" href="css/normalize.css">
+  <link rel="stylesheet" href="css/foundation.css">
+
+  <script type="text/javascript">
+  var map;
+  var apiKey = 'AIzaSyA-qsMobadAaD0tGPnlkFNeiL6Oldcsk1Y';
+  var tableID = '1yn-Xrv3X-Z7xPAWtLTgPsTqP8BfbYen68TMIDuY';
+  var latitudeColumn = 'latitude';
+  var longitudeColumn = 'longitude';
+  var typeColumn = 'incidentType';
+  var weightColumn = "'id'";
+  var dateColumn = 'Date';
+  var locDescColumn = 'locationDesc';
+  var urlColumn = 'url';
+  var imageUrlColumn = 'images';
+
+  window.numCheckboxesInGroup = {"incidentCheckboxes" : 11, "timeCheckboxes" : 6};
+
+  window.incidentQuery = new Array();
+  window.incidentQuery["types"] = new Array();
+  window.incidentQuery["ignoreTypes"] = new Array();
+  window.incidentQuery["time"] = 9999;
+  window.incidentQuery["weight"] = "none";
+
+  function fetchData() {
+
+      // Construct the query to the Fusion Table
+      var query = 'SELECT ' + 
+      latitudeColumn + ',' + 
+      longitudeColumn + ',' + 
+      weightColumn + ',' + 
+      typeColumn + ',' + 
+      dateColumn + ',' +
+      locDescColumn + ',' +
+      urlColumn + ',' +
+      imageUrlColumn + 
+      ' FROM ' + 
+      tableID;
+      var encodedQuery = encodeURIComponent(query);
+
+      // Construct the URL
+      var url = ['https://www.googleapis.com/fusiontables/v1/query'];
+      url.push('?sql=' + encodedQuery);
+      url.push('&key=' + apiKey);
+          //url.push('&callback=?');
+
+      // Send the JSONP request using jQuery
+      $.ajax({
+        url: url.join(''),
+        dataType: 'jsonp',
+        success: onDataFetched
+      });
+    }
+
+    function loadIncidents(types, ignoreTypes, dayRange, weightType)
+    {
+      window.incidents = new Array();
+
+      var rows = window.data['rows'];
+      var heatmapData = [];
+
+      //Keep track of how many incidents will be loaded.
+      numIncidents = 0;
+
+      //Go over all available incidents.
+      for (var i in rows) {
+        //If no incident types have been passed in, load all incidents.
+        if(types.length == 0)
+        {
+          //If the current incident doesn't have of the undersireable types.
+          if(!hasSubStringFromArray(rowIncidents, ignoreTypes))
+          {
+            //Is this incident composed of valid fields?
+            if(isValidIncident(rows[i]))
+            {
+              //Did this incident happen within the last dayRange days?
+              if(dayDiff(new Date(), new Date(rows[i][4])) <= dayRange)
+              {
+                //Store the incident globally
+                extractIncident(numIncidents, rows[i]);
+
+                // //Add incident to the heatmap.
+                // var lat = rows[i][0];
+                // var lng = rows[i][1];
+
+                // if(weightType == "none")
+                // {
+                //   var weight = 1;//rows[i][2] / 151.0;
+                // }
+                // else if(weightType == "mostRecent")
+                // {
+
+                // }
+
+                // //Add that incident to the heat map layer.
+                // heatmapData.push({location: new google.maps.LatLng(lat,lng), weight: parseFloat(weight)});
+
+                numIncidents += 1;
+              }
+            }
+          }
+        }
+        //If an array of list types have been passed in, attempt to add them.
+        else
+        {
+          //Extract the incident types for the current row; set them to lower case for ease of comparison.
+          var rowIncidents = String(rows[i][3]).toLowerCase();
+
+          //Iterate over all requested incident types to be loaded.
+          for(var j in types)
+          {
+            //If the current incident is of one of the requested types.
+            if(rowIncidents.indexOf(types[j]) > -1)
+            {
+              //If the current incident doesn't have of the undersireable types.
+              if(!hasSubStringFromArray(rowIncidents, ignoreTypes))
+              {
+                //Is this incident composed of valid fields?
+                if(isValidIncident(rows[i]))
+                {
+                  //Did this incident happen within the last dayRange days?
+                  if(dayDiff(new Date(), new Date(rows[i][4])) <= dayRange)
+                  {
+                    //Store the incident globally
+                    extractIncident(numIncidents, rows[i]);
+
+                    // //Add incident to the heatmap.
+                    // var lat = rows[i][0];
+                    // var lng = rows[i][1];
+
+                    // if(weightType == "none")
+                    // {
+                    //   var weight = 1;//rows[i][2] / 151.0;
+                    // }
+                    // else if(weightType == "mostRecent")
+                    // {
+
+                    // }
+
+                    // //Add that incident to the heat map layer.
+                    // heatmapData.push({location: new google.maps.LatLng(lat,lng), weight: parseFloat(weight)});
+
+                    numIncidents += 1;
+
+                    //Move on to the next incident to avoid adding the same incident more than once.
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if(window.heatmap != undefined)
+      {
+        //Clear the heatmap layer.
+        window.heatmap.setMap(null);
+      }
+
+      if(numIncidents > 0)
+      {
+        window.incidents.sort(function(a,b){return a[1] - b[1]});
+
+        var maxDaysAgo = window.incidents[0]["daysAgo"];
+        var minDaysAgo = window.incidents[numIncidents - 1]["daysAgo"];
+        var minWeightVal = 1 + minDaysAgo;
+        for(var i in window.incidents)
+        {
+          var daysAgo = window.incidents[i]["daysAgo"];
+
+          window.incidents[i]["weightVal"] = Math.ceil((1 + (maxDaysAgo - daysAgo) + minDaysAgo) / minWeightVal);
+        }
+
+        for(var i in window.incidents)
+        {
+          var lat = window.incidents[i][3];
+          var lng = window.incidents[i][4];
+
+          var weight = 1;
+          if(weightType == "mostRecent")
+          {
+            weight = window.incidents[i]["weightVal"];
+          }
+
+          //Add that incident to the heat map layer.
+          heatmapData.push({location: new google.maps.LatLng(lat,lng), weight: parseFloat(weight)});
+        }
+        
+        window.incidents.sort(function(a,b){return b[1] - a[1]});
+
+        //Create a new heatmap layer with the requested incident types.
+        window.heatmap = new google.maps.visualization.HeatmapLayer({
+          data: heatmapData,
+          radius: 30,
+          dissipating: true
+        });
+
+        //Add the new heatmap layer to the map.
+        window.heatmap.setMap(map);
+      }
+
+      clearTable();
+      for(var i in window.incidents)
+      {
+        addRowToTable(window.incidents[i]);
+      }
+
+      //console.log("Valid Incidents Loaded: " + numIncidents);
+      $("#numIncidents").text(numIncidents);
+      $("#numIncidentsPar").show();
+    }
+
+    function hasSubStringFromArray(string, arr)
+    {
+      for(var i in arr)
+      {
+        if(string.indexOf(arr[i]) > -1)
+        {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function isValidIncident(row)
+    {
+      //Is the 'id' field an invalid number?
+      if(isNaN(row[2]))
+      {
+        // console.log("-- Invalid Incident, Invalid ID --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      //Does the incident not have a valid location?
+      if(row[0] == "43.6085540959987" && row[1] == "-79.3635556280155")
+      {
+        // console.log("-- Invalid Incident, No Location --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      //Is the 'incident type' field empty?
+      if(row[3] == "")
+      {
+        // console.log("-- Invalid Incident, Empty Incident Type --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      if(row[3].toLowerCase().indexOf("duplicate_record") > -1)
+      {
+        // console.log("-- Invalid Incident, Duplicate Record --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      if(row[3].toLowerCase().indexOf("no_location") > -1)
+      {
+        // console.log("-- Invalid Incident, No Location --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      if(row[3].toLowerCase().indexOf("no_date") > -1)
+      {
+        // console.log("-- Invalid Incident, No Date --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      if(row[3].toLowerCase().indexOf("suspect_charged") > -1)
+      {
+        // console.log("-- Invalid Incident, Suspect Charged --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      //Was there no confrontation between a suspect and a victim during the incident?
+      if(row[3].toLowerCase().indexOf("no_conf") > -1)
+      {
+        // console.log("-- Invalid Incident, No Confrontation --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      //Was there no confrontation between a suspect and a victim during the incident?
+      if(row[3].toLowerCase().indexOf("no_confrontation") > -1)
+      {
+        // console.log("-- Invalid Incident, No Confrontation --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      //Was a suspect arrested without an incident occurring?
+      if(row[3].toLowerCase().indexOf("suspect_arrested") > -1)
+      {
+        // console.log("-- Invalid Incident, Suspect Charged --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      //Is the 'Date' field an invalid date?
+      if(new Date(row[4]) == "Invalid Date")
+      {
+        // console.log("-- Invalid Incident, Invalid Date --");
+        // printIncidentToConsole(row);
+        return false;
+      }
+
+      return true;
+    }
+
+    function printIncidentToConsole(row)
+    {
+      console.log("ID: " + row[2]);
+      console.log("Date: " + new Date(row[4]));
+      console.log("Lat: " + row[0]);
+      console.log("Long: " + row[1]);
+      console.log("Incident Type: " + row[3]);
+
+      console.log("");
+    }
+
+    function dayDiff(dateOne, dateTwo)
+    {
+      var timeDiff = Math.abs(dateTwo - dateOne);
+      var diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+      return diffDays;
+    }
+
+    function extractIncident(incidentNum, row)
+    {
+      window.incidents[incidentNum] = new Array();
+      
+      window.incidents[incidentNum][0] = parseInt(row[2]);
+      window.incidents[incidentNum][1] = new Date(row[4]);
+
+      window.incidents[incidentNum][2] = row[5];
+
+      window.incidents[incidentNum][3] = String(row[0]);
+      window.incidents[incidentNum][4] = row[1];
+      window.incidents[incidentNum][5] = row[3];
+      window.incidents[incidentNum][6] = row[6];
+      window.incidents[incidentNum][7] = row[7];
+
+      window.incidents[incidentNum]["daysAgo"] = dayDiff(new Date(), new Date(row[4]));
+    }
+
+    // document this to indicate that since the request has now returned, we can
+    // draw the heat map layer.
+    function onDataFetched(data) {
+      window.data = data;
+
+      tickCheckbox("#checkbox1");
+
+      // var types = new Array();
+      // loadIncidents(types, [], 1095);
+
+      loadIncidents(window.incidentQuery["types"], window.incidentQuery["ignoreTypes"], window.incidentQuery["time"], window.incidentQuery["weight"]);
+    }
+
+    function initialize() {
+      fetchData();
+
+      map = new google.maps.Map(document.getElementById('map-canvas'), {
+        center: new google.maps.LatLng(43.65819513833168, -79.3778316854973),
+        zoom: 16,
+        mapTypeId: google.maps.MapTypeId.ROADMAP,
+        mapTypeControlOptions: {mapTypeIds: new Array(google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.HYBRID)},
+        streetViewControl: false,
+        panControl: false,
+        //mapTypeControl: false
+      });
+    }
+
+    google.maps.event.addDomListener(window, 'load', initialize);
+
+    </script>
+
+  </head>
+  <body>
+    <nav class="top-bar">
+      <ul class="title-area">
+        <!-- Title Area -->
+        <li class="name">
+          <h1><a href="#">RyeWatch</a></h1>
+        </li>
+        <!-- Remove the class "menu-icon" to get rid of menu icon. Take out "Menu" to just have icon alone -->
+      </ul>
+
+      <section class="top-bar-section">
+        <!-- Left Nav Section -->
+        <ul class="right">
+          <li class="divider"></li>
+          <li><a href="#">What's This?</a></li>
+          <li class="divider"></li>
+          <li><a href="#">Graphs!</a></li>
+          <li class="divider"></li>
+        </ul>
+      </section>
+    </nav>
+
+<!-- <div id="panel">
+      <button onclick="toggleHeatmap()">Toggle Heatmap</button>
+      <button onclick="changeGradient()">Change gradient</button>
+      <button onclick="changeRadius()">Change radius</button>
+      <button onclick="changeOpacity()">Change opacity</button>
+    </div> -->
+    <div class="row">
+      <div class="large-12 columns">
+        <div id="map-canvas"></div>
+      </div>
+    </div>
+    <!-- Second Band (Image Left with Text) -->
+
+    <form id="mapControl" class="custom">
+
+<!-- threat
+indecent
+harassment
+theft
+suspicious
+weapon -->
+
+<div class="row">
+  <div class="large-4 columns">
+
+    <fieldset class="incidentCheckboxes">
+      <legend>Incident Type</legend>
+
+      <label for="checkbox1">
+        <input type="checkbox" id="checkbox1" value="all"  style="display: none;" checked>
+        <span class="custom checkbox "></span> All
+      </label>
+
+      <label for="checkbox2">
+        <input type="checkbox" id="checkbox2" value="assault" valuesToIgnore="sex" style="display: none;">
+        <span class="custom checkbox"></span> Assaults (Non-Sexual)
+      </label>
+
+      <label for="checkbox3">
+        <input type="checkbox" id="checkbox3" value="robbery" style="display: none;">
+        <span class="custom checkbox"></span> Robberies
+      </label>
+
+      <label for="checkbox4">
+        <input type="checkbox" id="checkbox4" value="sex" style="display: none;">
+        <span class="custom checkbox"></span> Assaults (Sexual)
+      </label>
+
+      <label for="checkbox5">
+        <input type="checkbox" id="checkbox5" value="threat" style="display: none;">
+        <span class="custom checkbox"></span> Threats
+      </label>
+
+      <label for="checkbox6">
+        <input type="checkbox" id="checkbox6" value="indecent" style="display: none;">
+        <span class="custom checkbox"></span> Indecent Activity
+      </label>
+
+      <label for="checkbox7">
+        <input type="checkbox" id="checkbox7" value="harassment" style="display: none;">
+        <span class="custom checkbox"></span> Harassment
+      </label>
+
+      <label for="checkbox8">
+        <input type="checkbox" id="checkbox8" value="theft" style="display: none;">
+        <span class="custom checkbox"></span> Theft
+      </label>
+
+      <label for="checkbox9">
+        <input type="checkbox" id="checkbox9" value="suspicious" style="display: none;">
+        <span class="custom checkbox"></span> Suspicious Behaviour
+      </label>
+
+      <label for="checkbox10">
+        <input type="checkbox" id="checkbox10" value="weapon" style="display: none;">
+        <span class="custom checkbox"></span> Use of Weapon
+      </label>
+
+      <label for="checkbox11">
+        <input type="checkbox" id="checkbox11" value="male,voyeur" style="display: none;">
+        <span class="custom checkbox"></span> Voyeurism
+      </label>
+    </fieldset>
+
+  </div>
+
+  <div class="large-4 columns">
+
+    <fieldset class="timeCheckboxes">
+      <legend>Incident Time</legend>
+
+      <label for="timeRadio1">
+        <input name="radio1" type="radio" id="timeRadio1" value="all" style="display:none;" checked>
+        <span class="custom radio checked"></span> All
+      </label>
+
+      <label for="timeRadio2">
+        <input name="radio1" type="radio" id="timeRadio2" value="monthPastThree" style="display:none;">
+        <span class="custom radio"></span> Past Three Months
+      </label>
+
+      <label for="timeRadio3">
+        <input name="radio1" type="radio" id="timeRadio3" value="yearPastOne" style="display:none;">
+        <span class="custom radio"></span> Past Year
+      </label>
+
+      <label for="timeRadio4">
+        <input name="radio1" type="radio" id="timeRadio4" value="yearPastTwo" style="display:none;">
+        <span class="custom radio"></span> Past Two Years
+      </label>
+
+      <label for="timeRadio5">
+        <input name="radio1" type="radio" id="timeRadio5" value="yearPastThree" style="display:none;">
+        <span class="custom radio"></span> Past Three Years
+      </label>
+
+      <label for="timeRadio6">
+        <input name="radio1" type="radio" id="timeRadio6" value="yearPastFour" style="display:none;">
+        <span class="custom radio"></span> Past Four Years
+      </label>
+
+      <label for="timeRadio7">
+        <input name="radio1" type="radio" id="timeRadio7" value="yearPastFive" style="display:none;">
+        <span class="custom radio"></span> Past Five Years
+      </label>
+    </fieldset>
+  </div>
+
+
+  <div class="large-4 columns">
+
+    <fieldset class="weightCheckboxes">
+      <legend>Incident Weight</legend>
+
+      <label for="weightRadio1">
+        <input name="radio2" type="radio" id="weightRadio1" value="none" style="display:none;" checked>
+        <span class="custom radio checked"></span> None
+      </label>
+
+      <label for="weightRadio2">
+        <input name="radio2" type="radio" id="weightRadio2" value="mostRecent" style="display:none;">
+        <span class="custom radio"></span> Most Recent
+      </label>
+
+    </fieldset>
+
+  </div>
+</div>
+
+
+</form>
+
+<div class="row">
+  <div class="large-12 columns">
+    <h4 id="numIncidentsPar" style="display: none;">Incidents (<text id="numIncidents">0</text> loaded)</h4>
+
+  </div>
+</div>
+
+<div class="row">
+  <div class="large-12 columns">
+    <table id="incidentsTable" class="responsive">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th width="250">Date</th>
+          <th width="250">Type</th>
+          <th>Location</th>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<footer class="row">
+  <div class="large-12 columns">
+    <hr />
+    <div class="row">
+      <div class="large-9 columns">
+        <p>Created and maintained as a free service to the Ryerson University Community by <a href="http://www.twitter.com/alexalksne">@alexalksne</a></p>
+      </div>
+      <div class="large-3 columns">
+        <ul class="inline-list right">
+          <li><a href="#">About</a></li>
+          <li><a href="#">Graphs!</a></li>
+          <li><a href="#">Attribution</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+document.write('<script src=js/vendor/' +
+  ('__proto__' in {} ? 'zepto' : 'jquery') +
+  '.js><\/script>')
+</script>
+<script src="js/foundation.min.js"></script>
+<script>
+$(document).foundation();
+
+$(".weightCheckboxes input[type='radio']").change(
+  function()
+  {
+    var weightVal = $('.weightCheckboxes input[type=radio]:checked').prop("value");
+
+    window.incidentQuery["weight"] = weightVal;
+
+    loadIncidents(window.incidentQuery["types"], window.incidentQuery["ignoreTypes"], window.incidentQuery["time"], window.incidentQuery["weight"]);
+
+        //console.log("WEIGHT: " + weightVal);
+      });
+
+
+$(".timeCheckboxes input[type='radio']").change(
+  function()
+  {
+    var timeVal = $('.timeCheckboxes input[type=radio]:checked').prop("value");
+
+    if(timeVal == "all")
+    {
+      window.incidentQuery["time"] = 9999;
+    }
+    else if(timeVal == "monthPastThree")
+    {
+      window.incidentQuery["time"] = 90;
+    }
+    else if(timeVal == "yearPastOne")
+    {
+      window.incidentQuery["time"] = 365;
+    }
+    else if(timeVal == "yearPastTwo")
+    {
+      window.incidentQuery["time"] = 730;
+    }
+    else if(timeVal == "yearPastThree")
+    {
+      window.incidentQuery["time"] = 1095;
+    }
+    else if(timeVal == "yearPastFour")
+    {
+      window.incidentQuery["time"] = 1460;
+    }
+    else if(timeVal == "yearPastFive")
+    {
+      window.incidentQuery["time"] = 1825;
+    }
+
+
+    loadIncidents(window.incidentQuery["types"], window.incidentQuery["ignoreTypes"], window.incidentQuery["time"], window.incidentQuery["weight"]);
+
+        //console.log("TIME: " + timeVal);
+      });
+
+    //If a checkbox has been changed.
+    $(".incidentCheckboxes input[type='checkbox']").change(
+      function()
+      {
+        var tickedBoxes = handleCheckboxGroupClick(this, ".incidentCheckboxes");
+
+        //Holds all incident types to load onto the map.
+        var types = new Array();
+        var ignoreTypes = new Array();
+
+        //Go through all checkboxes
+        $(".incidentCheckboxes input[type='checkbox']").each(function(){
+          //If the box is checked.
+          if(this.checked)
+          {
+            //Add it to the array of incidents to load.
+            if($(this).val().indexOf(',') > -1)
+            {
+              var splits = $(this).val().split(",")
+
+              for(var i in splits)
+              {
+                types.push(splits[i]);
+              }
+            }
+            else
+            {
+              types.push($(this).val());
+            }
+          }
+        });
+
+        //console.log("Incident types to load: " + types);
+        //console.log("");
+
+        //If the 'All Incidents' checkbox is ticked.
+        if(types.indexOf("all") > -1)
+        {
+          //Load all incidents.
+          types = new Array();
+        }
+        //If the 'All Incidents' checkbox is unticked.
+        else
+        {
+          if(tickedBoxes.length == 1)
+          {
+            var valuesToIgnore = tickedBoxes[0].attr('valuesToIgnore');
+            if(valuesToIgnore != undefined)
+            {
+              ignoreTypes.push(valuesToIgnore);
+            }
+          }
+        }
+
+        // if(ignoreTypes.length > 0)
+        // {
+        //   console.log("- Ignoring some types.");
+        // }
+
+        window.incidentQuery["types"] = types;
+        window.incidentQuery["ignoreTypes"] = ignoreTypes;
+
+        loadIncidents(window.incidentQuery["types"], window.incidentQuery["ignoreTypes"], window.incidentQuery["time"], window.incidentQuery["weight"]);
+      });
+
+function untickCheckbox(checkboxInput)
+{
+      //Uncheck the current checkbox.
+      $(checkboxInput).prop("checked", false);
+
+      //Get this checkbox's id.
+      var checkboxID = $(checkboxInput).attr("id");
+      
+      //Remove the 'X' from this checkbox's box.
+      $("label[for='" + checkboxID + "'] > span").removeClass("checked");
+    }
+
+    function tickCheckbox(checkboxInput)
+    {
+      //Uncheck the current checkbox.
+      $(checkboxInput).prop("checked", true);
+
+      //Get this checkbox's id.
+      var checkboxID = $(checkboxInput).attr("id");
+      
+      //Remove the 'X' from this checkbox's box.
+      $("label[for='" + checkboxID + "'] > span").addClass("checked");
+    }
+
+    function handleCheckboxGroupClick(checkbox, checkboxGroup)
+    {
+      var tickedBoxes = new Array();
+
+      //If the 'All incidents' checkbox has been clicked.
+      if($(checkbox).val() == "all")
+      {
+        //If the 'All incidents' checkbox is now checked.
+        if(checkbox.checked)
+        {
+          tickedBoxes.push(checkbox);
+
+          //Go through every checkbox.
+          $(checkboxGroup + " input[type='checkbox']").each(function(){
+            //If the checkbox's value is not 'all'.
+            if($(this).val() != "all")
+            {
+              //Untick that checkbox.
+              untickCheckbox(this);
+            }
+          });
+        }
+        //If the 'All incidents' checkbox is now unticked.
+        else
+        {
+          //Go through every checkbox.
+          $(checkboxGroup + " input[type='checkbox']").each(function(){
+            //If the checkbox's value is not 'all'.
+            if($(this).val() != "all")
+            {
+              tickedBoxes.push($(this));
+
+              //Tick that checkbox.
+              tickCheckbox(this);
+            }
+          });
+        }
+      }
+      //If any checkbox other than the 'All' checkbox has been clicked.
+      else
+      {
+        var numUnticked = 0;
+
+        //How many checkboxes, other than 'All', are ticked?
+        //Go through each checkbox input in the page.
+        $(checkboxGroup + " input[type='checkbox']").each(function(){
+
+          //Ignore the 'All incidents' checkbox.
+          if($(this).val() != "all")
+          {
+            //Is this checkbox unticked?
+            if(this.checked == false)
+            {
+              numUnticked += 1;
+            }
+            else
+            {
+              tickedBoxes.push($(this));
+            }
+          }
+        });
+
+        var allCheckboxID = $(checkboxGroup + " input[type='checkbox']")[0].id;
+
+        //If all checkboxes other than 'All' are unticked.
+        if(numUnticked == window.numCheckboxesInGroup[checkboxGroup.replace(".", "")] - 1)
+        {
+          //Tick the 'All incidents' checkbox.
+          tickCheckbox("#" + allCheckboxID);
+
+          tickedBoxes.push($("#" + allCheckboxID));
+        }
+        //If at least one checkbox other than 'All incidents' is ticked.
+        else
+        {
+          //Untick the 'All incidents' checkbox (just in case if it was ticked).
+          untickCheckbox("#" + allCheckboxID);
+        }
+      }
+
+      return tickedBoxes;
+    }
+
+    // ----------------------------- TABLE -----------------------------------
+    function clearTable()
+    {
+      var numRowsDel = $('#incidentsTable > tbody > tr').length;
+      $('#incidentsTable > tbody').empty();
+
+      return numRowsDel;
+    }
+
+    function addRowToTable(rawRow)
+    {
+      var row = "";
+
+      row += "<tr>";
+      row += "<td>";
+
+      if(rawRow[6] != "")
+      {
+        row += "<a href='" + String(rawRow[6]) + "' target='_blank'>" + rawRow[0] + "</a>";
+      }
+      else
+      {
+        row += rawRow[0];
+      }
+
+      row += "</td>";
+
+      row += "<td>";
+      row += moment(new Date(rawRow[1])).format('MMM. Do, YYYY - h:mm A');
+      row += "</td>";
+
+      row += "<td>";
+      row += rawRow[5];
+      row += "</td>";
+
+      row += "<td>";
+      row += rawRow[2];
+      row += "</td>";
+
+      row += "</tr>";
+
+      $('#incidentsTable > tbody').append(row);
+    }
+
+    </script>
+
+  </body>
+  </html>
